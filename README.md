@@ -55,3 +55,46 @@ COLORS = {
     'temp': '#FFB85F',  # Amber — Temperature label
     'ram': '#FF8C5F',   # Orange — RAM usage label
 }
+```
+
+Colors use standard hex color codes. You can pick colors from any color picker tool (e.g., [htmlcolorcodes.com](https://htmlcolorcodes.com)).
+
+### Load Warning Thresholds (CPU, GPU, RAM)
+By default, metric colors change dynamically based on load percentage. You can adjust these thresholds in the `_get_color()` method inside `OverlayGUI`:
+
+```python
+def _get_color(self, value, base_color):
+    if value < 50:    # ← Below this: shows the normal base color
+        return base_color
+    elif value < 80:  # ← Below this: turns amber/yellow as a warning
+        return self.COLORS['temp']
+    else:             # ← Above this: turns red as a critical alert
+        return '#FF5F5F'
+```
+
+| Load % | Color | Meaning |
+|---|---|---|
+| Below 50% | Base color (blue/green/orange) | Normal |
+| 50% – 79% | Amber `#FFB85F` | Warning |
+| 80% and above | Red `#FF5F5F` | Critical |
+
+---
+
+### Temperature Warning Thresholds (GPU)
+GPU temperature uses its own separate color scale, adjustable in `_get_temp_color()`:
+
+```python
+def _get_temp_color(self, temp):
+    if temp < 60:    # ← Below this: normal amber color
+        return self.COLORS['temp']
+    elif temp < 75:  # ← Below this: orange warning
+        return '#FFA05F'
+    else:            # ← Above this: red critical alert
+        return '#FF5F5F'
+```
+
+| Temperature | Color | Meaning |
+|---|---|---|
+| Below 60°C | Amber `#FFB85F` | Normal |
+| 60°C – 74°C | Orange `#FFA05F` | Warning |
+| 75°C and above | Red `#FF5F5F` | Critical — check cooling |
