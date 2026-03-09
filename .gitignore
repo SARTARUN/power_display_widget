@@ -1,0 +1,10 @@
+# Log files
+*.log
+overlay_errors.log
+
+# Pythong cache and environements
+__pycache__/
+*.py[cod]
+.venv/
+venv
+env/
