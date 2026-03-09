@@ -18,11 +18,8 @@ from ctypes import wintypes
 
 # ===== LOGGING SETUP =====
 logging.basicConfig(
-    level=logging.WARNING,
+    level=logging.CRITICAL,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('overlay_errors.log'),
-    ]
 )
 logger = logging.getLogger('overlay')
 
@@ -44,6 +41,7 @@ class DataType(Enum):
     """Types of monitoring data"""
     GPU_STATS = "gpu_stats"
     MEMORY = "memory"
+    CPU = "cpu"
 
 @dataclass
 class MonitorData:
@@ -53,7 +51,7 @@ class MonitorData:
     timestamp: float
 
 # Thread-safe bounded queue for worker-to-GUI communication
-data_queue = queue.Queue(maxsize=10)
+data_queue = queue.Queue(maxsize=4) # Small buffer to prevent memory bloat if GUI lags
 
 # ===== MONITOR CLASSES =====
 class NvidiaGPUMonitor:
@@ -94,12 +92,12 @@ class NvidiaGPUMonitor:
                     temp = pynvml.nvmlDeviceGetTemperature(self._handle, pynvml.NVML_TEMPERATURE_GPU)
                     self._cache = (util.gpu, temp)
                     self._last_query = now
-                except Exception as e:
-                    logger.error(f"pynvml query failed: {e}")
+                except Exception:
+                    self._available = False # Stop retrying, fall back to nvidia-smi
             else:
                 try:
                     cmd = ["nvidia-smi", "--query-gpu=utilization.gpu,temperature.gpu",
-                           "--format=csv,noheader,nounits"]
+                            "--format=csv,noheader,nounits"]
                     output = subprocess.check_output(cmd, startupinfo=self._startupinfo,
                                                     encoding='utf-8', timeout=1.5)
                     util, temp = output.strip().split(', ')
@@ -127,7 +125,7 @@ def worker_gpu_stats():
         data_queue.put(MonitorData(DataType.GPU_STATS, stats, time.time()), timeout=0.1)
     except:
         pass
-    
+
     while True:
         try:
             stats = monitor.get_stats()
@@ -146,12 +144,15 @@ def worker_system_stats():
         data_queue.put(MonitorData(DataType.MEMORY, mem.percent, time.time()), timeout=0.1)
     except:
         pass
-    
+
     while True:
         try:
             # Memory stats
             mem = psutil.virtual_memory()
             data_queue.put(MonitorData(DataType.MEMORY, mem.percent, time.time()), timeout=0.1)
+            # CPU stats
+            cpu = psutil.cpu_percent(interval=1.0)  # blocking call — fine on background thread
+            data_queue.put(MonitorData(DataType.CPU, cpu, time.time()), timeout=0.1)
         except queue.Full:
             pass
         except Exception as e:
@@ -184,6 +185,7 @@ class OverlayGUI:
         # Current data from workers
         self.current_gpu_data = (0, 0)
         self.current_ram = 0
+        self.current_cpu = 0
 
         # Create window
         self.root = tk.Tk()
@@ -194,13 +196,13 @@ class OverlayGUI:
 
         self.setup_ui()
         self.position_window()
-        
+
         # Start workers before making click-through (faster initial data)
         t1 = threading.Thread(target=worker_gpu_stats, daemon=True)
         t2 = threading.Thread(target=worker_system_stats, daemon=True)
         t1.start()
         t2.start()
-        
+
         # Small delay to let workers get first data
         self.root.after(100, self.make_click_through)
         # Start updates immediately
@@ -264,11 +266,11 @@ class OverlayGUI:
             spacing = 10
 
         # Background panel with border for better visibility
-        self.main_frame = tk.Frame(self.root, 
+        self.main_frame = tk.Frame(self.root,
                                    bg='#1a1a1a',  # Darker background
                                    highlightbackground='#404040',  # Border color
                                    highlightthickness=1,
-                                   padx=10, 
+                                   padx=10,
                                    pady=6)
         self.main_frame.pack()
 
@@ -285,7 +287,7 @@ class OverlayGUI:
         self._add_spacer(row, spacing)
 
         # TEMP
-        self.lbl_temp = self._create_compact_label(row, "TMP", self.COLORS['temp'], font_size)
+        self.lbl_temp = self._create_compact_label(row, "TEMP", self.COLORS['temp'], font_size)
         self._add_spacer(row, spacing)
 
         # RAM
@@ -305,16 +307,16 @@ class OverlayGUI:
         frame.pack(side=tk.LEFT)
 
         # Label (name)
-        lbl_name = tk.Label(frame, text=name, 
+        lbl_name = tk.Label(frame, text=name,
                            font=('Consolas', font_size-1, 'bold'),
-                           bg='#1a1a1a', 
+                           bg='#1a1a1a',
                            fg='#999999')  # Lighter gray for better contrast
         lbl_name.pack(side=tk.LEFT, padx=(0, 3))
 
         # Value with fixed width to prevent cutoff
-        lbl_value = tk.Label(frame, text="--", 
+        lbl_value = tk.Label(frame, text="--",
                             font=('Consolas', font_size, 'bold'),
-                            bg='#1a1a1a', 
+                            bg='#1a1a1a',
                             fg=color,
                             width=4,  # Fixed width for up to "100%"
                             anchor='w')  # Left align
@@ -332,9 +334,9 @@ class OverlayGUI:
 
     def _add_spacer(self, parent, width):
         """Add horizontal spacer"""
-        spacer = tk.Label(parent, text="|", 
+        spacer = tk.Label(parent, text="|",
                          font=('Consolas', 9),
-                         bg='#1a1a1a', 
+                         bg='#1a1a1a',
                          fg='#404040')  # More visible separator
         spacer.pack(side=tk.LEFT, padx=width)
         spacer.bind("<Control-Shift-Button-1>", self.toggle_click_through)
@@ -347,10 +349,10 @@ class OverlayGUI:
         self.root.update_idletasks()
         w = self.main_frame.winfo_reqwidth()
         h = self.main_frame.winfo_reqheight()
-        
+
         try:
             user32 = ctypes.windll.user32
-            
+
             # Structure for monitor info
             class RECT(ctypes.Structure):
                 _fields_ = [
@@ -359,7 +361,7 @@ class OverlayGUI:
                     ('right', ctypes.c_long),
                     ('bottom', ctypes.c_long)
                 ]
-            
+
             class MONITORINFO(ctypes.Structure):
                 _fields_ = [
                     ('cbSize', wintypes.DWORD),
@@ -367,13 +369,13 @@ class OverlayGUI:
                     ('rcWork', RECT),
                     ('dwFlags', wintypes.DWORD)
                 ]
-            
+
             monitors = []
-            
+
             def callback(hMonitor, hdcMonitor, lprcMonitor, dwData):
                 info = MONITORINFO()
                 info.cbSize = ctypes.sizeof(MONITORINFO)
-                
+
                 if user32.GetMonitorInfoW(hMonitor, ctypes.byref(info)):
                     monitors.append({
                         'left': info.rcMonitor.left,
@@ -381,7 +383,7 @@ class OverlayGUI:
                         'right': info.rcMonitor.right,
                     })
                 return True
-            
+
             # Enum all monitors
             MONITOR_ENUM_PROC = ctypes.WINFUNCTYPE(
                 ctypes.c_int,
@@ -390,28 +392,28 @@ class OverlayGUI:
                 ctypes.POINTER(RECT),
                 wintypes.LPARAM
             )
-            
+
             user32.EnumDisplayMonitors(None, None, MONITOR_ENUM_PROC(callback), 0)
-            
+
             logger.info(f"Detected {len(monitors)} monitor(s)")
             for i, mon in enumerate(monitors):
                 logger.info(f"Monitor {i}: left={mon['left']}, right={mon['right']}, top={mon['top']}")
-            
+
             if len(monitors) > 0:
                 # Find the monitor with the highest 'right' value (rightmost)
                 rightmost_monitor = max(monitors, key=lambda m: m['right'])
-                
+
                 # Position on rightmost monitor
                 x = rightmost_monitor['right'] - w - 10
                 y = rightmost_monitor['top'] + 50
-                
+
                 self.root.geometry(f'{w}x{h}+{x}+{y}')
                 logger.info(f"Positioned on rightmost display at ({x}, {y})")
                 return
-            
+
         except Exception as e:
             logger.error(f"Monitor detection failed: {e}")
-        
+
         # Fallback
         screen_width = self.root.winfo_screenwidth()
         x = screen_width - w - 10
@@ -429,14 +431,16 @@ class OverlayGUI:
                     self.current_gpu_data = data.value
                 elif data.data_type == DataType.MEMORY:
                     self.current_ram = data.value
+                elif data.data_type == DataType.CPU:
+                    self.current_cpu = data.value
         except queue.Empty:
             pass
 
         # Get CPU usage (use interval=None for instant read from cache)
-        cpu_usage = psutil.cpu_percent(interval=None)
+        cpu_usage = round(self.current_cpu)
         if cpu_usage == 0.0:
             cpu_usage = psutil.cpu_percent(interval=0.1)  # First call needs interval
-            
+
         gpu_load, gpu_temp = self.current_gpu_data
         ram_usage = self.current_ram
 
