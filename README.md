@@ -34,3 +34,24 @@ The overlay starts in **Click-Through Mode** by default. Use the following short
 - **Left Click & Drag**: Move the overlay around your screen.
 - **Right Click**: Close the application.
 - **Double Left Click**: Toggle between "Compact" and "Normal" font sizes.
+
+## Configuration
+
+You can customize the overlay by editing the constants at the top of `overlay.pyw` (under the `# ===== CONFIGURATION =====` section):
+
+| Setting | Default | Description |
+|---|---|---|
+| `REFRESH_RATE` | `1000` | How often the display updates, in milliseconds. Lower = faster but more CPU usage. |
+| `ALPHA` | `0.75` | Transparency of the overlay. Range is `0.0` (invisible) to `1.0` (fully opaque). |
+| `COMPACT_MODE` | `True` | Set to `False` to start in larger font mode by default. Can also be toggled at runtime with Double-Click. |
+
+### Changing Colors
+The display colors for each metric can be changed by editing the `COLORS` dictionary inside the `OverlayGUI` class:
+
+```python
+COLORS = {
+    'cpu': '#5FB3FF',   # Blue  — CPU usage label
+    'gpu': '#5FFFA6',   # Green — GPU usage label
+    'temp': '#FFB85F',  # Amber — Temperature label
+    'ram': '#FF8C5F',   # Orange — RAM usage label
+}
