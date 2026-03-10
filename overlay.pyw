@@ -405,6 +405,20 @@ class OverlayGUI:
                 x = rightmost_monitor['right'] - w - 10
                 y = rightmost_monitor['top'] + 50
                 
+                # Verify coordinates against the actual virtual screen bounds.
+                # When no display is connected, Windows or Remote Desktop might present
+                # phantom monitors resulting in off-screen placement.
+                SM_XVIRTUALSCREEN = user32.GetSystemMetrics(76)
+                SM_YVIRTUALSCREEN = user32.GetSystemMetrics(77)
+                SM_CXVIRTUALSCREEN = user32.GetSystemMetrics(78)
+                SM_CYVIRTUALSCREEN = user32.GetSystemMetrics(79)
+                
+                # Fallback to absolute boundaries if placed completely out of bounds
+                if not (SM_XVIRTUALSCREEN <= x <= SM_XVIRTUALSCREEN + SM_CXVIRTUALSCREEN - w):
+                    x = max(SM_XVIRTUALSCREEN, min(x, SM_XVIRTUALSCREEN + SM_CXVIRTUALSCREEN - w - 10))
+                if not (SM_YVIRTUALSCREEN <= y <= SM_YVIRTUALSCREEN + SM_CYVIRTUALSCREEN - h):
+                    y = max(SM_YVIRTUALSCREEN, min(y, SM_YVIRTUALSCREEN + SM_CYVIRTUALSCREEN - h - 10))
+                
                 self.root.geometry(f'{w}x{h}+{x}+{y}')
                 logger.info(f"Positioned on rightmost display at ({x}, {y})")
                 return
