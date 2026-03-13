@@ -35,6 +35,7 @@ except ImportError:
 REFRESH_RATE = 1000  # Update every 1 second
 ALPHA = 0.75  # More transparent
 COMPACT_MODE = True  # Set to False for larger display
+STARTUP_DELAY = 5  # Seconds to wait before starting monitoring (allows system to stabilize)
 
 # ===== DATA STRUCTURES =====
 class DataType(Enum):
@@ -65,6 +66,10 @@ class NvidiaGPUMonitor:
         self._available = False
         self._handle = None
 
+        # Prepare nvidia-smi fallback so it's ready if pynvml fails
+        self._startupinfo = subprocess.STARTUPINFO()
+        self._startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+
         if PYNVML_AVAILABLE:
             try:
                 pynvml.nvmlInit()
@@ -74,9 +79,10 @@ class NvidiaGPUMonitor:
             except Exception as e:
                 logger.warning(f"pynvml init failed: {e}")
 
-        if not self._available:
-            self._startupinfo = subprocess.STARTUPINFO()
-            self._startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        # _startupinfo is already initialized above
+        # if not self._available:
+        #     self._startupinfo = subprocess.STARTUPINFO()
+        #     self._startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
 
     def get_stats(self):
         """Get GPU utilization and temperature"""
@@ -92,8 +98,18 @@ class NvidiaGPUMonitor:
                     temp = pynvml.nvmlDeviceGetTemperature(self._handle, pynvml.NVML_TEMPERATURE_GPU)
                     self._cache = (util.gpu, temp)
                     self._last_query = now
-                except Exception:
-                    self._available = False # Stop retrying, fall back to nvidia-smi
+                except Exception as e:
+                    logger.error(f"pynvml query failed: {e}, attempting reinit")
+                    # Handle can become invalid when driver reinitialises during boot/login.
+                    # Try to recover; if that also fails, fall back to nvidia-smi.
+                    try:
+                        pynvml.nvmlShutdown()
+                        pynvml.nvmlInit()
+                        self._handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+                        logger.info("pynvml reinitialized successfully")
+                    except Exception as reinit_e:
+                        logger.warning(f"pynvml reinit failed, switching to nvidia-smi: {reinit_e}")
+                        self._available = False
             else:
                 try:
                     cmd = ["nvidia-smi", "--query-gpu=utilization.gpu,temperature.gpu",
@@ -118,6 +134,8 @@ class NvidiaGPUMonitor:
 # ===== WORKER THREADS =====
 def worker_gpu_stats():
     """Background GPU monitoring thread"""
+    if STARTUP_DELAY > 0:
+        time.sleep(STARTUP_DELAY)
     monitor = NvidiaGPUMonitor()
     # Get initial value immediately
     stats = monitor.get_stats()
@@ -138,6 +156,7 @@ def worker_gpu_stats():
 
 def worker_system_stats():
     """Background system monitoring thread"""
+    psutil.cpu_percent(interval=None)  # Initialize CPU percent calculation
     # Get initial value immediately
     try:
         mem = psutil.virtual_memory()
@@ -151,8 +170,9 @@ def worker_system_stats():
             mem = psutil.virtual_memory()
             data_queue.put(MonitorData(DataType.MEMORY, mem.percent, time.time()), timeout=0.1)
             # CPU stats
-            cpu = psutil.cpu_percent(interval=1.0)  # blocking call — fine on background thread
-            data_queue.put(MonitorData(DataType.CPU, cpu, time.time()), timeout=0.1)
+            cpu = psutil.cpu_percent(interval=None)  # blocking call — fine on background thread
+            data_queue.put(MonitorData(DataType.CPU, cpu, time.time()), timeout=0.7)
+            #time.sleep(0.7)
         except queue.Full:
             pass
         except Exception as e:
@@ -406,8 +426,7 @@ class OverlayGUI:
                 # Position on rightmost monitor
                 x = rightmost_monitor['right'] - w - 10
                 y = rightmost_monitor['top'] + 50
-<<<<<<< HEAD
-                
+
                 # Verify coordinates against the actual virtual screen bounds.
                 # When no display is connected, Windows or Remote Desktop might present
                 # phantom monitors resulting in off-screen placement.
@@ -415,16 +434,13 @@ class OverlayGUI:
                 SM_YVIRTUALSCREEN = user32.GetSystemMetrics(77)
                 SM_CXVIRTUALSCREEN = user32.GetSystemMetrics(78)
                 SM_CYVIRTUALSCREEN = user32.GetSystemMetrics(79)
-                
+
                 # Fallback to absolute boundaries if placed completely out of bounds
                 if not (SM_XVIRTUALSCREEN <= x <= SM_XVIRTUALSCREEN + SM_CXVIRTUALSCREEN - w):
                     x = max(SM_XVIRTUALSCREEN, min(x, SM_XVIRTUALSCREEN + SM_CXVIRTUALSCREEN - w - 10))
                 if not (SM_YVIRTUALSCREEN <= y <= SM_YVIRTUALSCREEN + SM_CYVIRTUALSCREEN - h):
                     y = max(SM_YVIRTUALSCREEN, min(y, SM_YVIRTUALSCREEN + SM_CYVIRTUALSCREEN - h - 10))
-                
-=======
 
->>>>>>> 939b8911f10d9a77adad84bdba396caed2cb59cb
                 self.root.geometry(f'{w}x{h}+{x}+{y}')
                 logger.info(f"Positioned on rightmost display at ({x}, {y})")
                 return
