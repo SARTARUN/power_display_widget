@@ -3,10 +3,12 @@
 A highly transparent, minimalist, and lightweight system monitor overlay for Windows. It floats above your other windows to give you real-time tracking of your CPU, GPU, Temperature, and RAM usage.
 
 ## Features
-- **Ultra-Compact Design**: Takes up minimal screen space.
+- **Ultra-Compact Design**: Takes up minimal screen space (~4 MB memory usage).
 - **Click-Through Mode**: Can be made completely unclickable so it never gets in the way of your games or work.
 - **Dynamic Colors**: Text colors change based on system loads and temperatures.
-- **Auto-Positioning**: Automatically snaps to the top-right of your main display.
+- **Auto-Positioning**: Automatically snaps to the top-right of your rightmost display.
+- **Multi-Monitor Support**: Detects all connected displays and positions correctly, even when a monitor is disconnected.
+- **Boot-Safe GPU Monitoring**: Handles NVIDIA driver initialization delays at startup gracefully.
 
 ## Installation
 1. Ensure you have Python installed.
@@ -21,11 +23,26 @@ A highly transparent, minimalist, and lightweight system monitor overlay for Win
    ```
 
 ## Run on Startup (Windows)
-If you want the overlay to launch automatically every time you log into Windows:
-1. Right-click the `overlay.pyw` file and select **Create shortcut**.
-2. Press `Windows Key + R` to open the **Run** dialog.
-3. Type `shell:startup` and press **Enter**. This will open your user's Startup folder.
-4. Drag and drop (or cut and paste) the new `overlay.pyw - Shortcut` file into this Startup folder.
+
+For the most reliable startup with no delay, use **Task Scheduler**:
+
+1. Open **Task Scheduler** → click *Create Basic Task* in the right panel.
+2. Give it a name (e.g. `Overlay`) and click **Next**.
+3. Trigger: select **When I log on**, click **Next**.
+4. Action: select **Start a program**, click **Next**.
+   - **Program/script**: path to `pythonw.exe`, for example:
+     ```
+     C:\Users\YourName\AppData\Local\Programs\Python\Python312\pythonw.exe
+     ```
+   - **Add arguments**: path to the script, for example:
+     ```
+     "C:\path\to\overlay.pyw"
+     ```
+5. Click **Finish**, then open the task's **Properties**:
+   - **General** tab → check *Run only when user is logged on*.
+   - **Conditions** tab → uncheck *Start the task only if the computer is on AC power*.
+
+> **Note:** Unlike the Startup folder, Task Scheduler runs the program immediately at logon with no Windows-imposed delay.
 
 ## Controls & Shortcuts
 The overlay starts in **Click-Through Mode** by default. Use the following shortcuts to interact with it:
@@ -44,6 +61,7 @@ You can customize the overlay by editing the constants at the top of `overlay.py
 | `REFRESH_RATE` | `1000` | How often the display updates, in milliseconds. Lower = faster but more CPU usage. |
 | `ALPHA` | `0.75` | Transparency of the overlay. Range is `0.0` (invisible) to `1.0` (fully opaque). |
 | `COMPACT_MODE` | `True` | Set to `False` to start in larger font mode by default. Can also be toggled at runtime with Double-Click. |
+| `STARTUP_DELAY` | `5` | Seconds to wait before querying the GPU after launch. Prevents stale readings on boot while the NVIDIA driver finishes initializing. |
 
 ### Changing Colors
 The display colors for each metric can be changed by editing the `COLORS` dictionary inside the `OverlayGUI` class:
