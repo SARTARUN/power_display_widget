@@ -42,13 +42,13 @@ For the most reliable startup with no delay, use **Task Scheduler**:
 
 > **Note:** Unlike the Startup folder, Task Scheduler runs the program immediately at logon with no Windows-imposed delay.
 
-## Controls & Shortcuts
+<!-- ## Controls & Shortcuts
 The overlay starts in **Click-Through Mode** by default. Use the following shortcuts to interact with it:
 
 - **Ctrl + Shift + Left Click**: Toggle between Click-Through and Interactive Mode. (The border turns green when interactive).
 - **Left Click & Drag**: Move the overlay around your screen.
 - **Right Click**: Close the application.
-- **Double Left Click**: Toggle between "Compact" and "Normal" font sizes.
+- **Double Left Click**: Toggle between "Compact" and "Normal" font sizes. -->
 
 ## Configuration
 You can customize the overlay by editing the constants at the top of `overlay.pyw` (under the `# ===== CONFIGURATION =====` section):
