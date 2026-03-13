@@ -1,5 +1,4 @@
 # Python System Monitor Overlay
-
 A highly transparent, minimalist, and lightweight system monitor overlay for Windows. It floats above your other windows to give you real-time tracking of your CPU, GPU, Temperature, and RAM usage.
 
 ## Features
@@ -23,7 +22,6 @@ A highly transparent, minimalist, and lightweight system monitor overlay for Win
    ```
 
 ## Run on Startup (Windows)
-
 For the most reliable startup with no delay, use **Task Scheduler**:
 
 1. Open **Task Scheduler** → click *Create Basic Task* in the right panel.
@@ -53,7 +51,6 @@ The overlay starts in **Click-Through Mode** by default. Use the following short
 - **Double Left Click**: Toggle between "Compact" and "Normal" font sizes.
 
 ## Configuration
-
 You can customize the overlay by editing the constants at the top of `overlay.pyw` (under the `# ===== CONFIGURATION =====` section):
 
 | Setting | Default | Description |
