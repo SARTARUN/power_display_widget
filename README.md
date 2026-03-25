@@ -13,7 +13,7 @@ A highly transparent, minimalist, and lightweight system monitor overlay for Win
 1. Ensure you have Python installed.
 2. Install the required dependencies:
    ```bash
-   pip install psutil pynvml
+   pip install psutil nvidia-ml-py
    ```
    *(Note: `pynvml` is optional but highly recommended for NVIDIA GPU monitoring).*
 3. Run the script:
