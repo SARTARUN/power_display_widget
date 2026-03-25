@@ -79,11 +79,6 @@ class NvidiaGPUMonitor:
             except Exception as e:
                 logger.warning(f"pynvml init failed: {e}")
 
-        # _startupinfo is already initialized above
-        # if not self._available:
-        #     self._startupinfo = subprocess.STARTUPINFO()
-        #     self._startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-
     def get_stats(self):
         """Get GPU utilization and temperature"""
         now = time.time()
@@ -170,9 +165,8 @@ def worker_system_stats():
             mem = psutil.virtual_memory()
             data_queue.put(MonitorData(DataType.MEMORY, mem.percent, time.time()), timeout=0.1)
             # CPU stats
-            cpu = psutil.cpu_percent(interval=None)  # blocking call — fine on background thread
+            cpu = psutil.cpu_percent(interval=None)  # non-blocking call — fine on background thread
             data_queue.put(MonitorData(DataType.CPU, cpu, time.time()), timeout=0.7)
-            #time.sleep(0.7)
         except queue.Full:
             pass
         except Exception as e:
@@ -199,7 +193,6 @@ class OverlayGUI:
         }
 
         self._topmost_counter = 0
-        self._color_cache = {}
         self._click_through = True  # Start in click-through mode
 
         # Current data from workers
@@ -216,17 +209,15 @@ class OverlayGUI:
 
         self.setup_ui()
         self.position_window()
+        self._start_workers()  # called once, here only
+        self.root.after(100, self.make_click_through)
+        self.root.after(200, self.update_stats)
 
-        # Start workers before making click-through (faster initial data)
+    def _start_workers(self):
         t1 = threading.Thread(target=worker_gpu_stats, daemon=True)
         t2 = threading.Thread(target=worker_system_stats, daemon=True)
         t1.start()
         t2.start()
-
-        # Small delay to let workers get first data
-        self.root.after(100, self.make_click_through)
-        # Start updates immediately
-        self.root.after(200, self.update_stats)
 
     def make_click_through(self):
         """Make window click-through on Windows"""
@@ -287,11 +278,11 @@ class OverlayGUI:
 
         # Background panel with border for better visibility
         self.main_frame = tk.Frame(self.root,
-                                   bg='#1a1a1a',  # Darker background
-                                   highlightbackground='#404040',  # Border color
-                                   highlightthickness=1,
-                                   padx=10,
-                                   pady=6)
+                                    bg='#1a1a1a',  # Darker background
+                                    highlightbackground='#404040',  # Border color
+                                    highlightthickness=1,
+                                    padx=10,
+                                    pady=6)
         self.main_frame.pack()
 
         # Single horizontal row
@@ -328,9 +319,9 @@ class OverlayGUI:
 
         # Label (name)
         lbl_name = tk.Label(frame, text=name,
-                           font=('Consolas', font_size-1, 'bold'),
-                           bg='#1a1a1a',
-                           fg='#999999')  # Lighter gray for better contrast
+                            font=('Consolas', font_size-1, 'bold'),
+                            bg='#1a1a1a',
+                            fg='#999999')  # Lighter gray for better contrast
         lbl_name.pack(side=tk.LEFT, padx=(0, 3))
 
         # Value with fixed width to prevent cutoff
@@ -355,9 +346,9 @@ class OverlayGUI:
     def _add_spacer(self, parent, width):
         """Add horizontal spacer"""
         spacer = tk.Label(parent, text="|",
-                         font=('Consolas', 9),
-                         bg='#1a1a1a',
-                         fg='#404040')  # More visible separator
+                            font=('Consolas', 9),
+                            bg='#1a1a1a',
+                            fg='#404040')  # More visible separator
         spacer.pack(side=tk.LEFT, padx=width)
         spacer.bind("<Control-Shift-Button-1>", self.toggle_click_through)
         spacer.bind("<Button-1>", self.start_move)
@@ -529,9 +520,14 @@ class OverlayGUI:
         """Toggle between compact and normal mode"""
         global COMPACT_MODE
         COMPACT_MODE = not COMPACT_MODE
-        self.root.destroy()
-        new_overlay = OverlayGUI()
-        new_overlay.run()
+        # Destroy only the widget tree, not the root window
+        self.main_frame.destroy()
+        # Rebuild UI in place — same root, same mainloop, same worker threads
+        self.setup_ui()
+        self.position_window()
+        # Force all labels to refresh on the next update_stats tick
+        for k in self._last_values:
+            self._last_values[k] = None
 
     def start_move(self, event):
         if not self._click_through:
